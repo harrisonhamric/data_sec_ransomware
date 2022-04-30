@@ -65,4 +65,5 @@ func main() {
 	}
 
 	//Now crypto...
+	//Using AES, choose a mode and find easy implementation online please
 }
